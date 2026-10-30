@@ -1,0 +1,117 @@
+# 1. Reformat the text (my original prompt)
+
+Reformat this text so it is highly readable: 
+1. Add bullets, bold font, other text formatting tools where it is appropriate.
+2. **Keep all the details**.
+3. Keep the style. 
+4. Do NOT make any changes to the contents, just reformat the text.
+5. Use markdown tables (`| Column | Column |` with `|-|-|` for headers) for structured lists, such as metrics with descriptions, to make them concise and readable.
+   - Apply formatting only to clarify structure or highlight essential elements, such as bold for metric names, bullets for lists, or tables for metric lists.
+   - Example for bullets: `- **Key Concept**: Description of the concept.`
+   - Example for tables:
+     ```
+     | **Metric Name** | **Description** |
+     |-----------------|-----------------|
+     | Metric One      | Description of the metric. |
+     ```
+6. Verify that the summary includes all core concepts, key terms, and examples from the original text before finalizing the output.
+
+This is the text:
+
+
+
+Reformat and summarize the provided text to improve readability and reduce length while preserving the original meaning and key concepts. Follow these steps:
+
+
+# 2. Markdown list of sources
+
+Make a markdown list from the list of sources below.
+
+1. Keep all the links I provide, do not miss one.
+2. Keep the links order like in the source list.
+3. Format each link like this: 
+3.1 If this is a text:
+```markdown
+1. [Article name](link) - name of the website
+```
+3.2 If this is a video:
+```markdown
+1. [Article name (VIDEO)](link) - name of the website
+```
+
+This is the list:
+
+
+
+# 3. Reformat text to markdown so it is like original
+
+Reformat the provided text to improve readability by following these steps:
+
+1. **Apply markdown formatting** to enhance structure:
+   - Use bullets (`-`) for lists or key points.
+   - Use bold (`**text**`) for metric names, key terms, or section titles.
+   - Use headings (`#` or `##`) to organize major sections (e.g., vanity metrics, actionable metrics).
+   - Use italics (`*text*`) for citations or quotes (e.g., book titles or talk titles).
+   - Apply formatting only to clarify structure or highlight key elements, such as bold for metric names and bullets for lists.
+   - Example: `- **Metric Name**: Description of the metric.`
+2. **Preserve the exact content**:
+   - Do not add, remove, or modify any words, phrases, sentences, punctuation, or capitalization.
+   - Keep the original text unchanged, applying only formatting.
+3. Keep the original tone, phrasing, and narrative flow intact.
+4. Use standard markdown syntax (e.g., `**text**` for bold, `# Heading` for headings, `-` for bullets).
+5. Ensure the entire text is reformatted without omitting any parts.
+
+This is the text to reformat:
+
+[Insert text here]
+
+---
+
+# 4. Make a detailed summary
+
+Reformat and summarize the provided text to improve readability and reduce length while preserving the original meaning and key concepts. Follow these steps:
+
+1. **Summarize the content**:
+   - Condense the text to reduce its length by at least 50%, focusing on the main ideas, arguments, examples, and critical details.
+   - Retain all core concepts, key terms, and examples without adding new information or interpretations.
+   - Maintain the original tone, intent, and narrative flow, ensuring the summary remains accurate and representative of the source.
+2. **Apply markdown formatting** to enhance structure and conciseness:
+   - Use headings (`#` or `##`) to organize major sections or themes.
+   - Use bullets (`-`) for lists, key points, or examples.
+   - Use bold (`**text**`) for key terms, concepts, or section titles (e.g., main ideas, specific metrics, or theories).
+   - Use italics (`*text*`) for citations, quotes, or referenced works (e.g., book titles, lecture names).
+   - Use markdown tables (`| Column | Column |` with `|-|-|` for headers) for structured lists, such as metrics with descriptions, to make them concise and readable.
+   - Apply formatting only to clarify structure or highlight essential elements, such as bold for metric names, bullets for lists, or tables for metric lists.
+   - Example for bullets: `- **Key Concept**: Description of the concept.`
+   - Example for tables:
+     ```
+     | **Metric Name** | **Description** |
+     |-----------------|-----------------|
+     | Metric One      | Description of the metric. |
+     ```
+     - Use tables only for lists with clear name-description or key-value pairs (e.g., metrics, parameters, or settings). Avoid tables for narrative text or non-structured content.
+3. **Preserve the exact meaning and concepts**:
+   - Do not add, remove, or modify the core ideas, arguments, or examples from the original text.
+   - Ensure all major points, including named concepts, cited authors, and specific examples, are included in the condensed version.
+   - Prioritize brevity while keeping the summary comprehensive and faithful to the source, including when using tables.
+4. Use standard markdown syntax (e.g., `**text**` for bold, `# Heading` for headings, `-` for bullets, `| Column |` for tables).
+5. Ensure the entire text is summarized and reformatted without omitting any critical concepts or examples.
+6. Verify that the summary includes all core concepts, key terms, and examples from the original text before finalizing the output.
+
+Text to summarize and reformat:
+
+
+---
+
+
+# 5. Create a table
+
+1. Reformat this text to a markdown table.
+2. Do NOT make any changes to the contents, just reformat the text into the table.
+
+This is the text:
+
+
+
+
+

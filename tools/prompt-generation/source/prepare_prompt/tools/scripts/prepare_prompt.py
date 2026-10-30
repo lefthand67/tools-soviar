@@ -1,0 +1,475 @@
+#!/usr/bin/env python3
+"""
+Script to prepare prompt files for LLM consumption.
+
+Usage:
+    prepare_prompt.py <file>                       # Auto-detect format, YAML-like output
+    prepare_prompt.py <file> --output-format plain # Extract text values only
+    prepare_prompt.py --stdin                      # Read from stdin (JSON default)
+    prepare_prompt.py --stdin --input-format yaml  # Stdin with explicit format
+
+Supported input formats: JSON, YAML, TOML, Markdown (with frontmatter), Plain Text
+Format is auto-detected from file extension, or can be specified with --input-format.
+
+Exit codes:
+    0 = Success
+    1 = Error (file not found, invalid format, etc.)
+
+This script converts prompt files to LLM-friendly formats by removing
+metadata, stripping special characters, and converting to YAML-like output.
+"""
+
+import argparse
+import json
+import re
+import sys
+import tomllib
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import TextIO
+
+import yaml
+
+
+def main():
+    """Entry point."""
+    cli = PreparePromptCLI()
+    cli.run()
+
+
+class FormatDetector:
+    """Detect input format from file extension or explicit flag."""
+
+    EXTENSION_MAP = {
+        ".json": "json",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".toml": "toml",
+        ".md": "markdown",
+        ".txt": "text",
+    }
+
+    @classmethod
+    def detect(cls, file_path: str | None, explicit_format: str | None) -> str:
+        """Detect format from extension or use explicit override."""
+        if explicit_format:
+            return explicit_format
+        if file_path:
+            suffix = Path(file_path).suffix.lower()
+            return cls.EXTENSION_MAP.get(suffix, "json")
+        return "json"
+
+
+class InputHandler(ABC):
+    """Abstract base class for input format handlers."""
+
+    STRIP_CHARS = "*'\"\\`#"
+
+    # Patterns where asterisks represent math multiplication (preserve these)
+    MATH_PATTERNS = [
+        re.compile(r"\b\w+\s*\*\s*[\d.]+"),  # var * num (E * 0.35)
+        re.compile(r"[\d.]+\s*\*\s*\w+"),  # num * var (0.35 * E)
+        re.compile(r"[\d.]+\s*\*\s*[\d.]+"),  # num * num (0.35 * 0.25)
+    ]
+
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose
+
+    @abstractmethod
+    def parse(self, content: str) -> dict | list | None:
+        """Parse content into a data structure."""
+        pass
+
+    def remove_metadata(self, data: dict) -> dict:
+        """Remove metadata field from data structure."""
+        if isinstance(data, dict) and "metadata" in data:
+            result = {k: v for k, v in data.items() if k != "metadata"}
+            if self.verbose:
+                print("  Removed 'metadata' field", file=sys.stderr)
+            return result
+        return data
+
+    def to_yaml_like(self, data: dict | list, indent: int = 0) -> str:
+        """Convert data to YAML-like format with character stripping."""
+        lines = []
+        prefix = "  " * indent
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, (dict, list)):
+                    lines.append(f"{prefix}{key}:")
+                    lines.append(self.to_yaml_like(value, indent + 1))
+                else:
+                    clean_value = self._strip_chars(self._format_value(value))
+                    lines.append(f"{prefix}{key}: {clean_value}")
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, (dict, list)):
+                    lines.append(f"{prefix}-")
+                    lines.append(self.to_yaml_like(item, indent + 1))
+                else:
+                    clean_item = self._strip_chars(self._format_value(item))
+                    lines.append(f"{prefix}- {clean_item}")
+        else:
+            lines.append(f"{prefix}{self._strip_chars(str(data))}")
+
+        return "\n".join(lines)
+
+    def to_plain_text(self, data: dict | list) -> str:
+        """Extract text values only, newline-separated."""
+        values = []
+        self._extract_values(data, values)
+        return "\n".join(values)
+
+    def _extract_values(self, data: dict | list, values: list) -> None:
+        """Recursively extract string values."""
+        if isinstance(data, dict):
+            for value in data.values():
+                self._extract_values(value, values)
+        elif isinstance(data, list):
+            for item in data:
+                self._extract_values(item, values)
+        elif isinstance(data, str):
+            clean = self._strip_chars(data)
+            if clean.strip():
+                values.append(clean)
+        elif data is not None:
+            values.append(self._format_value(data))
+
+    def _strip_chars(self, text: str) -> str:
+        """Remove special characters, preserving math multiplication operators."""
+        # Find positions protected by math patterns (asterisks in multiplication)
+        protected = set()
+        for pattern in self.MATH_PATTERNS:
+            for match in pattern.finditer(text):
+                # Only protect the asterisk positions within the match
+                for i in range(match.start(), match.end()):
+                    if text[i] == "*":
+                        protected.add(i)
+
+        # Build result, only stripping unprotected chars
+        result = []
+        for i, char in enumerate(text):
+            if char in self.STRIP_CHARS:
+                if char == "*" and i in protected:
+                    result.append(char)
+                # else: skip (strip the character)
+            else:
+                result.append(char)
+        return "".join(result)
+
+    def _format_value(self, value) -> str:
+        """Format a value for output, converting booleans to lowercase."""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return str(value)
+
+
+class JsonHandler(InputHandler):
+    """Handle JSON-specific processing."""
+
+    def parse(self, content: str) -> dict | list | None:
+        """Parse JSON content. Returns None if invalid."""
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON - {e.msg} at line {e.lineno}", file=sys.stderr)
+            return None
+
+
+class YamlHandler(InputHandler):
+    """Handle YAML-specific processing."""
+
+    def parse(self, content: str) -> dict | list | None:
+        """Parse YAML content. Returns None if invalid."""
+        try:
+            return yaml.safe_load(content)
+        except yaml.YAMLError as e:
+            print(f"Error: Invalid YAML - {e}", file=sys.stderr)
+            return None
+
+
+class TomlHandler(InputHandler):
+    """Handle TOML-specific processing."""
+
+    def parse(self, content: str) -> dict | None:
+        """Parse TOML content. Returns None if invalid."""
+        try:
+            return tomllib.loads(content)
+        except tomllib.TOMLDecodeError as e:
+            print(f"Error: Invalid TOML - {e}", file=sys.stderr)
+            return None
+
+
+class MarkdownHandler(InputHandler):
+    """Handle Markdown with YAML frontmatter."""
+
+    def parse(self, content: str) -> dict | None:
+        """Parse Markdown content, extracting YAML frontmatter and body."""
+        lines = content.split("\n")
+        frontmatter = {}
+        body_start = 0
+
+        if lines and lines[0].strip() == "---":
+            end_index = None
+            for i, line in enumerate(lines[1:], start=1):
+                if line.strip() == "---":
+                    end_index = i
+                    break
+
+            if end_index is not None:
+                frontmatter_content = "\n".join(lines[1:end_index])
+                if frontmatter_content.strip():
+                    try:
+                        frontmatter = yaml.safe_load(frontmatter_content) or {}
+                    except yaml.YAMLError as e:
+                        print(
+                            f"Error: Invalid YAML in frontmatter - {e}", file=sys.stderr
+                        )
+                        return None
+                body_start = end_index + 1
+
+        body = "\n".join(lines[body_start:])
+        return {"frontmatter": frontmatter, "body": body}
+
+    def remove_metadata(self, data: dict) -> dict:
+        """Remove metadata from frontmatter section."""
+        if isinstance(data, dict) and "frontmatter" in data:
+            frontmatter = data["frontmatter"]
+            if isinstance(frontmatter, dict) and "metadata" in frontmatter:
+                new_frontmatter = {
+                    k: v for k, v in frontmatter.items() if k != "metadata"
+                }
+                if self.verbose:
+                    print("  Removed 'metadata' from frontmatter", file=sys.stderr)
+                return {"frontmatter": new_frontmatter, "body": data.get("body", "")}
+        return data
+
+
+class PlainTextHandler(InputHandler):
+    """Handle plain text pass-through."""
+
+    def parse(self, content: str) -> dict:
+        """Wrap plain text content in a dict structure."""
+        return {"content": content}
+
+    def remove_metadata(self, data: dict) -> dict:
+        """Plain text has no metadata to remove."""
+        return data
+
+
+class HandlerFactory:
+    """Factory to create appropriate handler based on format."""
+
+    HANDLERS = {
+        "json": JsonHandler,
+        "yaml": YamlHandler,
+        "toml": TomlHandler,
+        "markdown": MarkdownHandler,
+        "text": PlainTextHandler,
+    }
+
+    @classmethod
+    def create(cls, format_type: str, verbose: bool = False) -> InputHandler:
+        """Create a handler for the specified format."""
+        handler_class = cls.HANDLERS.get(format_type)
+        if handler_class is None:
+            raise ValueError(f"Unsupported format: {format_type}")
+        return handler_class(verbose=verbose)
+
+
+class Reporter:
+    """Handle output formatting and exit behavior."""
+
+    @staticmethod
+    def output(content: str) -> None:
+        """Print content to stdout."""
+        print(content)
+
+    @staticmethod
+    def success() -> None:
+        """Exit with success code."""
+        sys.exit(0)
+
+    @staticmethod
+    def error(message: str) -> None:
+        """Print error message and exit with error code."""
+        print(f"Error: {message}", file=sys.stderr)
+        sys.exit(1)
+
+
+class PreparePromptCLI:
+    """Main application orchestrator."""
+
+    def __init__(self):
+        self.parser = self._create_parser()
+
+    def _create_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(
+            description="Prepare prompt files for LLM consumption",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""Examples:
+  %(prog)s prompt.json                        # Auto-detect JSON, YAML-like output
+  %(prog)s prompt.yaml                        # Auto-detect YAML input
+  %(prog)s config.toml                        # Auto-detect TOML input
+  %(prog)s doc.md                             # Auto-detect Markdown with frontmatter
+  %(prog)s prompt.json --output-format plain  # Extract text values only
+  %(prog)s --stdin --input-format yaml        # Read YAML from stdin
+  %(prog)s prompt.json --verbose              # Show processing details
+""",
+        )
+        parser.add_argument(
+            "file",
+            nargs="?",
+            help="Path to prompt file (JSON, YAML, TOML, Markdown, or text)",
+        )
+        parser.add_argument(
+            "--stdin",
+            action="store_true",
+            default=False,
+            help="Read input from stdin instead of file",
+        )
+        parser.add_argument(
+            "--input-format",
+            choices=["json", "yaml", "toml", "markdown", "text"],
+            default=None,
+            help="Input format (auto-detected from extension if not specified)",
+        )
+        parser.add_argument(
+            "--output-format",
+            choices=["yaml", "plain"],
+            default="yaml",
+            help="Output format: yaml (default) or plain text",
+        )
+        parser.add_argument(
+            "--verbose",
+            action="store_true",
+            default=False,
+            help="Enable verbose output",
+        )
+        return parser
+
+    def run(self, argv: list[str] | None = None) -> None:
+        """Execute the prompt preparation."""
+        args = self.parser.parse_args(argv)
+
+        # Validate arguments
+        if not args.stdin and not args.file:
+            Reporter.error("Either provide a file path or use --stdin")
+
+        if args.stdin and args.file:
+            Reporter.error("Cannot use both file path and --stdin")
+
+        # Read content
+        content = self._read_content(args.file, args.stdin, args.verbose)
+
+        # Detect input format
+        input_format = FormatDetector.detect(args.file, args.input_format)
+        if args.verbose:
+            print(f"  Detected input format: {input_format}", file=sys.stderr)
+
+        # Process content with appropriate handler
+        handler = HandlerFactory.create(input_format, verbose=args.verbose)
+        data = handler.parse(content)
+
+        if data is None:
+            sys.exit(1)
+
+        # Resolve recursive includes
+        if args.file:
+            data = self._resolve_includes(data, Path(args.file))
+
+        # Remove metadata if present
+        if isinstance(data, dict):
+            data = handler.remove_metadata(data)
+
+        # Generate output
+        if args.output_format == "yaml":
+            output = handler.to_yaml_like(data)
+        else:
+            output = handler.to_plain_text(data)
+
+        Reporter.output(output)
+        Reporter.success()
+
+    def _resolve_includes(self, data: dict | list, current_path: Path, visited: set[Path] = None) -> dict | list:
+        """Recursively resolve '_includes' blocks and merge them into the data structure."""
+        if visited is None:
+            visited = set()
+
+        if not isinstance(data, dict):
+            return data
+
+        if current_path in visited:
+            Reporter.error(f"Circular dependency detected: {current_path}")
+
+        visited.add(current_path)
+
+        if "_includes" in data:
+            includes = data["_includes"]
+            if not isinstance(includes, list):
+                Reporter.error(f"'_includes' must be a list in {current_path}")
+
+            merged_data = {}
+            for include_path_str in includes:
+                include_path = Path(include_path_str)
+                if not include_path.exists():
+                    Reporter.error(f"Included file not found: {include_path}")
+
+                # Detect format and parse included file
+                fmt = FormatDetector.detect(str(include_path), None)
+                include_handler = HandlerFactory.create(fmt)
+                
+                include_content = include_path.read_text(encoding="utf-8")
+                include_data = include_handler.parse(include_content)
+                if include_data is None:
+                    sys.exit(1)  # Handler already printed error
+
+                # Recursive resolve (pass a copy of visited to track paths in current branch)
+                resolved_included = self._resolve_includes(include_data, include_path, visited.copy())
+
+                if isinstance(resolved_included, dict):
+                    merged_data.update(resolved_included)
+                else:
+                    Reporter.error(f"Included file {include_path} must be a JSON object for merging.")
+
+            # Merge manifest data (everything except _includes) over the included blocks
+            manifest_data = {k: v for k, v in data.items() if k != "_includes"}
+            merged_data.update(manifest_data)
+            return merged_data
+
+        return data
+
+    def _read_content(
+        self, file_path: str | None, use_stdin: bool, verbose: bool
+    ) -> str:
+        """Read content from file or stdin."""
+        if use_stdin:
+            if verbose:
+                print("Reading from stdin...", file=sys.stderr)
+            return self._read_stdin(sys.stdin)
+
+        path = Path(file_path)
+        if not path.exists():
+            Reporter.error(f"File not found: {file_path}")
+
+        if not path.is_file():
+            Reporter.error(f"Not a file: {file_path}")
+
+        if verbose:
+            print(f"Reading from file: {file_path}", file=sys.stderr)
+
+        try:
+            return path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as e:
+            Reporter.error(f"UTF-8 encoding error: {e}")
+        except OSError as e:
+            Reporter.error(f"Cannot read file: {e}")
+
+    def _read_stdin(self, stdin: TextIO) -> str:
+        """Read all content from stdin."""
+        return stdin.read()
+
+
+if __name__ == "__main__":
+    main()
