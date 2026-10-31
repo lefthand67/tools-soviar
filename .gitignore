@@ -277,7 +277,6 @@ server_config/config/public_key
 rendered/
 
 .aider*
-misc/plan.md
 
 # MyST build outputs
 _build
@@ -288,10 +287,7 @@ draft*
 diff
 Untitled.*
 
-# source code of the external research projects (managed by register/unregister)
-ai_agents/research/ai_coding_agents/
-ai_agents/research/ai_infrastructure/
-
 # Qwen Code session settings
 .qwen/
-ai_agents/research/ai_skills_plugins/
+
+archive/
